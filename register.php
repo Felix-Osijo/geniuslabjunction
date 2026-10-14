@@ -1,297 +1,209 @@
 <?php
-session_start();
+require __DIR__ . '/includes/auth.php';
+require __DIR__ . '/includes/db.php';
 
-include (__DIR__."/includes/db.php");
+redirect_if_logged_in();
 
+const MIN_AGE = 13; // change this if your audience is different
 
-if (isset($_SESSION["user_id"])) {
+$errors = [];
+$old = [
+    'surname'    => '',
+    'othernames' => '',
+    'dob'        => '',
+    'gender'     => '',
+    'email'      => '',
+    'username'   => '',
+];
 
-    header("Location: /includes/db.php");
-    exit();
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    foreach ($old as $key => $_) {
+        $old[$key] = trim($_POST[$key] ?? '');
+    }
+    $old['email'] = strtolower($old['email']);
+    $password = $_POST['password'] ?? '';
+    $confirm  = $_POST['confirmPassword'] ?? '';
 
-$error = "";
-
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-
-
-
-    $surname = trim($_POST["surname"]);
-    $othernames = trim($_POST["othernames"]);
-    $dob = $_POST["dob"];
-    $gender = $_POST["gender"];
-    $email = trim($_POST["email"]);
-    $username = trim($_POST["username"]);
-    $password = $_POST["password"];
-    $confirmPassword = $_POST["confirmPassword"];
-
-    if ($password !== $confirmPassword) {
-
-        $error = "Passwords do not match.";
-
+    if (!csrf_valid()) {
+        $errors[] = 'Your session expired. Please try again.';
     } else {
+        if ($old['surname'] === '' || mb_strlen($old['surname']) > 100) {
+            $errors[] = 'Enter your surname (up to 100 characters).';
+        }
+        if ($old['othernames'] === '' || mb_strlen($old['othernames']) > 100) {
+            $errors[] = 'Enter your other names (up to 100 characters).';
+        }
 
-
-        $checkUser = $conn->prepare(
-            "SELECT id FROM users
-             WHERE email = ?
-             OR username = ?"
-        );
-
-        $checkUser->bind_param(
-            "ss",
-            $email,
-            $username
-        );
-
-        $checkUser->execute();
-
-        $result = $checkUser->get_result();
-
-
-        if ($result->num_rows > 0) {
-
-            $error = "Email or Username already exists.";
-
+        $dob = DateTime::createFromFormat('Y-m-d', $old['dob']);
+        if (!$dob || $dob->format('Y-m-d') !== $old['dob']) {
+            $errors[] = 'Enter a valid date of birth.';
         } else {
+            $age = $dob->diff(new DateTime('today'))->y;
+            if ($dob > new DateTime('today') || $age > 100) {
+                $errors[] = 'Enter a valid date of birth.';
+            } elseif ($age < MIN_AGE) {
+                $errors[] = 'You must be at least ' . MIN_AGE . ' years old to join.';
+            }
+        }
 
+        if (!in_array($old['gender'], ['male', 'female'], true)) {
+            $errors[] = 'Select your gender.';
+        }
+        if (!filter_var($old['email'], FILTER_VALIDATE_EMAIL) || strlen($old['email']) > 150) {
+            $errors[] = 'Enter a valid email address.';
+        }
+        if (!preg_match('/^[A-Za-z0-9_]{3,30}$/', $old['username'])) {
+            $errors[] = 'Username must be 3-30 characters: letters, numbers and underscores only.';
+        }
+        if (strlen($password) < 8) {
+            $errors[] = 'Password must be at least 8 characters.';
+        } elseif (strlen($password) > 72) {
+            $errors[] = 'Password must be 72 characters or fewer.';
+        } elseif ($password !== $confirm) {
+            $errors[] = 'Passwords do not match.';
+        }
+        if (empty($_POST['terms'])) {
+            $errors[] = 'You must accept the Privacy Policy to continue.';
+        }
+    }
 
-            $hashedPassword = password_hash(
-                $password,
-                PASSWORD_DEFAULT
-            );
-
-
+    if (!$errors) {
+        try {
+            $hash = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $conn->prepare(
-                "INSERT INTO users
-                (
-                    surname,
-                    othernames,
-                    dob,
-                    gender,
-                    email,
-                    username,
-                    password
-                )
-
-                VALUES (?, ?, ?, ?, ?, ?, ?)"
+                'INSERT INTO users (surname, othernames, dob, gender, email, username, password)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
-            
-            if (!$stmt) {
-            	die("Prepare failed: ".$conn->error);
-            	}
-
             $stmt->bind_param(
-                "sssssss",
-                $surname,
-                $othernames,
-                $dob,
-                $gender,
-                $email,
-                $username,
-                $hashedPassword
+                'sssssss',
+                $old['surname'], $old['othernames'], $old['dob'], $old['gender'],
+                $old['email'], $old['username'], $hash
             );
+            $stmt->execute();
 
+            session_regenerate_id(true);
+            $_SESSION['user_id']  = (int) $stmt->insert_id;
+            $_SESSION['username'] = $old['username'];
 
-            if ($stmt->execute()) {
-
-
-                $_SESSION["user_id"] = $stmt->insert_id;
-
-                $_SESSION["username"] = $username;
-
-
-                header("Location: ../dashboard.php");
-                exit();
-
+            header('Location: dashboard.php');
+            exit;
+        } catch (mysqli_sql_exception $ex) {
+            if ((int) $ex->getCode() === 1062) { // duplicate email or username
+                $errors[] = 'That email or username is already taken.';
             } else {
-
-                $error = "Something went wrong.".$stmt->error;
+                error_log('Genius Hub register failed: ' . $ex->getMessage());
+                $errors[] = 'Something went wrong on our side. Please try again.';
             }
         }
     }
 }
+
+$pageTitle = 'Create account';
+$bodyClass = 'auth-body';
+$showNav   = false;
+require __DIR__ . '/includes/header.php';
 ?>
+<main class="auth-shell">
+    <aside class="auth-aside">
+        <a class="brand brand-light" href="homepage.php">
+            <span class="brand-mark" aria-hidden="true">G</span>
+            <span>Genius Hub</span>
+        </a>
+        <h1>Join the community</h1>
+        <p>Learn with students, join discussions, complete challenges and earn XP as you grow.</p>
+        <ul class="aside-list">
+            <li>Interactive learning</li>
+            <li>Student collaboration</li>
+            <li>XP and achievements</li>
+        </ul>
+    </aside>
 
-<!DOCTYPE html>
-<html lang="en">
+    <section class="auth-panel">
+        <form class="form" method="post" action="register.php" novalidate>
+            <h2>Create account</h2>
+            <p class="form-text">Start your Genius Hub journey.</p>
 
-<head>
-
-<meta charset="UTF-8">
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
-
-<title>Create Account | Genius Lab Junction</title>
-
-<link rel="stylesheet" href="assets/css/style.css">
-
-</head>
-
-<body class="auth-body">
-
-
-<div class="auth-container">
-
-
-    <div class="auth-left">
-
-        <h1>Join The Community 🚀</h1>
-
-        <p>
-            Learn with students, participate in discussions,
-            complete challenges, and earn XP as you grow.
-        </p>
-
-        <div class="auth-features">
-
-            <div class="feature-item">
-                📚 Interactive learning
-            </div>
-
-            <div class="feature-item">
-                🌍 Student collaboration
-            </div>
-
-            <div class="feature-item">
-                🏆 XP & achievements
-            </div>
-
-        </div>
-
-    </div>
-
-
-
-    <div class="auth-right">
-
-        <form action="register.php"
-              method="POST"
-              class="auth-form">
-
-            <h2>Create Account</h2>
-
-            <p class="form-text">
-                Start your Genius Lab Junction journey
-            </p>
-
-
-            <?php if (!empty($error)): ?>
-
-                <p class="error-message">
-                    <?php echo $error; ?>
-                </p>
-
+            <?php if ($errors): ?>
+                <div class="alert alert-error" role="alert">
+                    <ul>
+                        <?php foreach ($errors as $msg): ?>
+                            <li><?= e($msg) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
             <?php endif; ?>
 
-            <div class="double-input">
+            <?= csrf_field() ?>
 
-                <input type="text"
-                       name="surname"
-                       placeholder="Surname"
-                       required>
-
-                <input type="text"
-                       name="othernames"
-                       placeholder="Other Names"
-                       required>
-
+            <div class="field-row">
+                <div class="field">
+                    <label for="surname">Surname</label>
+                    <input type="text" id="surname" name="surname" maxlength="100"
+                           value="<?= e($old['surname']) ?>" autocomplete="family-name" required>
+                </div>
+                <div class="field">
+                    <label for="othernames">Other names</label>
+                    <input type="text" id="othernames" name="othernames" maxlength="100"
+                           value="<?= e($old['othernames']) ?>" autocomplete="given-name" required>
+                </div>
             </div>
 
-
-            <div class="double-input">
-
-                <input type="date"
-                       name="dob"
-                       required>
-
-                <select name="gender" required>
-
-                    <option value="">
-                        Select Gender
-                    </option>
-
-                    <option value="male">
-                        Male
-                    </option>
-
-                    <option value="female">
-                        Female
-                    </option>
-
-                </select>
-
+            <div class="field-row">
+                <div class="field">
+                    <label for="dob">Date of birth</label>
+                    <input type="date" id="dob" name="dob"
+                           value="<?= e($old['dob']) ?>" autocomplete="bday" required>
+                </div>
+                <div class="field">
+                    <label for="gender">Gender</label>
+                    <select id="gender" name="gender" required>
+                        <option value="">Select</option>
+                        <option value="male"<?= $old['gender'] === 'male' ? ' selected' : '' ?>>Male</option>
+                        <option value="female"<?= $old['gender'] === 'female' ? ' selected' : '' ?>>Female</option>
+                    </select>
+                </div>
             </div>
 
-
-            <input type="text"
-                   name="email"
-                   placeholder="Email or Phone Number"
-                   required>
-
-
-            <input type="text"
-                   name="username"
-                   placeholder="Choose Username"
-                   required>
-
-
-            <input type="password"
-                   name="password"
-                   placeholder="Create Password"
-                   required>
-
-
-            <input type="password"
-                   name="confirmPassword"
-                   placeholder="Confirm Password"
-                   required>
-
-
-            <div class="terms-box">
-
-                <input type="checkbox"
-                       required>
-
-                <label>
-
-                    I agree to the
-                    <a href="../terms-of-use.html">
-                        Terms & Conditions
-                    </a>
-
-                </label>
-
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" maxlength="150"
+                       value="<?= e($old['email']) ?>" autocomplete="email" required>
             </div>
 
-
-            <button type="submit"
-                    class="primary-btn">
-
-                Create Account
-
-            </button>
-
-
-            <div class="auth-links">
-
-                <p>
-
-                    Already have an account?
-
-                    <a href="login.php">
-                        Login
-                    </a>
-
-                </p>
-
+            <div class="field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" maxlength="30"
+                       value="<?= e($old['username']) ?>" autocomplete="username" required>
+                <small class="hint">Letters, numbers and underscores. 3-30 characters.</small>
             </div>
 
+            <div class="field-row">
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" minlength="8" maxlength="72"
+                           autocomplete="new-password" required>
+                    <small class="hint">At least 8 characters.</small>
+                </div>
+                <div class="field">
+                    <label for="confirmPassword">Confirm password</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" minlength="8" maxlength="72"
+                           autocomplete="new-password" required>
+                </div>
+            </div>
+
+            <label class="checkbox">
+                <input type="checkbox" name="terms" value="1" required>
+                <span>I agree to the <a href="privacy-policy.php" target="_blank" rel="noopener">Privacy Policy</a></span>
+            </label>
+
+            <button type="submit" class="btn btn-primary btn-block">Create account</button>
+
+            <p class="auth-switch">
+                Already have an account? <a href="login.php">Log in</a>
+            </p>
         </form>
-
-    </div>
-
-</div>
-
-</body>
-</html>
+    </section>
+</main>
+<?php
+$showFooter = false;
+require __DIR__ . '/includes/footer.php';
