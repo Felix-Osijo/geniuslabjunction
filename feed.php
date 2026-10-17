@@ -2,12 +2,50 @@
 require __DIR__ . '/includes/auth.php';
 require __DIR__ . '/includes/db.php';
 require __DIR__ . '/includes/xp.php';
+require __DIR__ . '/includes/moderation.php';
 
 require_login();
 
 $userId  = (int) $_SESSION['user_id'];
+$isAdmin = user_role($conn, $userId) === 'admin';
 $errors  = [];
 $content = '';
+
+function item_actions(string $type, int $id, bool $canDelete, bool $canReport): void
+{
+    if (!$canDelete && !$canReport) {
+        return;
+    }
+    ?>
+    <div class="item-actions">
+        <?php if ($canDelete): ?>
+            <form method="post" action="feed.php" onsubmit="return confirm('Delete this <?= $type ?>?');">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="delete_<?= $type ?>">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <button type="submit" class="link-btn danger">Delete</button>
+            </form>
+        <?php endif; ?>
+        <?php if ($canReport): ?>
+            <details class="report">
+                <summary>Report</summary>
+                <form method="post" action="feed.php" class="report-form">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="report">
+                    <input type="hidden" name="type" value="<?= $type ?>">
+                    <input type="hidden" name="id" value="<?= $id ?>">
+                    <select name="reason" required aria-label="Reason">
+                        <?php foreach (REPORT_REASONS as $key => $label): ?>
+                            <option value="<?= e($key) ?>"><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="link-btn">Send</button>
+                </form>
+            </details>
+        <?php endif; ?>
+    </div>
+    <?php
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -67,6 +105,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    } elseif ($action === 'delete_post' || $action === 'delete_comment') {
+        $type  = $action === 'delete_post' ? 'post' : 'comment';
+        $id    = (int) ($_POST['id'] ?? 0);
+        $owner = owner_of($conn, $type, $id);
+
+        if ($owner === null) {
+            $errors[] = 'That item no longer exists.';
+        } elseif ($owner !== $userId && !$isAdmin) {
+            $errors[] = 'You can only delete your own posts and comments.';
+        } else {
+            $type === 'post' ? delete_post($conn, $id) : delete_comment($conn, $id);
+            $_SESSION['flash'] = ucfirst($type) . ' deleted.';
+            header('Location: feed.php');
+            exit;
+        }
+    } elseif ($action === 'report') {
+        $type   = $_POST['type'] ?? '';
+        $id     = (int) ($_POST['id'] ?? 0);
+        $reason = $_POST['reason'] ?? '';
+
+        if (!in_array($type, ['post', 'comment'], true) || $id < 1 || !isset(REPORT_REASONS[$reason])) {
+            $errors[] = 'That report could not be sent.';
+        } else {
+            $owner = owner_of($conn, $type, $id);
+
+            if ($owner === null) {
+                $errors[] = 'That item no longer exists.';
+            } elseif ($owner === $userId) {
+                $errors[] = 'You cannot report your own content.';
+            } else {
+                $stmt = $conn->prepare(
+                    'INSERT IGNORE INTO reports (reporter_id, target_type, target_id, reason) VALUES (?, ?, ?, ?)'
+                );
+                $stmt->bind_param('isis', $userId, $type, $id, $reason);
+                $stmt->execute();
+
+                $_SESSION['flash'] = $stmt->affected_rows > 0
+                    ? 'Thanks. We will review your report.'
+                    : 'You already reported this.';
+                header('Location: feed.php');
+                exit;
+            }
+        }
     }
 }
 
@@ -74,7 +155,7 @@ $flash = $_SESSION['flash'] ?? '';
 unset($_SESSION['flash']);
 
 $posts = $conn->query(
-    'SELECT p.id, p.content, p.created_at, u.username
+    'SELECT p.id, p.user_id, p.content, p.created_at, u.username
      FROM posts p
      JOIN users u ON u.id = p.user_id
      ORDER BY p.created_at DESC, p.id DESC
@@ -85,7 +166,7 @@ $comments = [];
 if ($posts) {
     $ids  = implode(',', array_map(fn($p) => (int) $p['id'], $posts));
     $rows = $conn->query(
-        "SELECT c.post_id, c.comment, c.created_at, u.username
+        "SELECT c.id, c.post_id, c.user_id, c.comment, c.created_at, u.username
          FROM comments c
          JOIN users u ON u.id = c.user_id
          WHERE c.post_id IN ($ids)
@@ -151,6 +232,7 @@ require __DIR__ . '/includes/header.php';
                         $postId       = (int) $post['id'];
                         $postComments = $comments[$postId] ?? [];
                         $count        = count($postComments);
+                        $ownPost      = (int) $post['user_id'] === $userId;
                         ?>
                         <article class="panel post" id="post-<?= $postId ?>">
                             <header class="post-head">
@@ -163,16 +245,21 @@ require __DIR__ . '/includes/header.php';
 
                             <p class="post-body"><?= nl2br(e($post['content'])) ?></p>
 
-                            <p class="post-stats"><?= $count ?> <?= $count === 1 ? 'comment' : 'comments' ?></p>
+                            <div class="post-foot">
+                                <p class="post-stats"><?= $count ?> <?= $count === 1 ? 'comment' : 'comments' ?></p>
+                                <?php item_actions('post', $postId, $ownPost || $isAdmin, !$ownPost && !$isAdmin); ?>
+                            </div>
 
                             <div class="comments">
                                 <?php foreach ($postComments as $c): ?>
+                                    <?php $ownComment = (int) $c['user_id'] === $userId; ?>
                                     <div class="comment">
                                         <span class="avatar avatar-sm" aria-hidden="true"><?= e(strtoupper(mb_substr($c['username'], 0, 1))) ?></span>
                                         <div class="comment-body">
                                             <strong><?= e($c['username']) ?></strong>
                                             <time datetime="<?= e($c['created_at']) ?>"><?= e(date('j M, g:i A', strtotime($c['created_at']))) ?></time>
                                             <p><?= nl2br(e($c['comment'])) ?></p>
+                                            <?php item_actions('comment', (int) $c['id'], $ownComment || $isAdmin, !$ownComment && !$isAdmin); ?>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>

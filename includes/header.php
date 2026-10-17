@@ -46,6 +46,10 @@ if (!function_exists('nav_current')) {
                 <li><a href="<?= e($base) ?>homepage.php"<?= nav_current('home', $active) ?>>Home</a></li>
                 <?php if (is_logged_in()): ?>
                     <li><a href="<?= e($base) ?>feed.php"<?= nav_current('feed', $active) ?>>Feed</a></li>
+                    <li><a href="<?= e($base) ?>account.php"<?= nav_current('account', $active) ?>>Account</a></li>
+                    <?php if (($_SESSION['role'] ?? '') === 'admin'): ?>
+                        <li><a href="<?= e($base) ?>admin.php"<?= nav_current('admin', $active) ?>>Admin</a></li>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <li><a href="<?= e($base) ?>about.php"<?= nav_current('about', $active) ?>>About</a></li>
                 <li><a href="<?= e($base) ?>privacy-policy.php"<?= nav_current('privacy', $active) ?>>Privacy</a></li>

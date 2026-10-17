@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Too many failed attempts. Please wait ' . LOGIN_WINDOW_MIN . ' minutes and try again.';
     } else {
         $stmt = $conn->prepare(
-            'SELECT id, username, password FROM users
+            'SELECT id, username, password, role FROM users
              WHERE email = ? OR username = ? LIMIT 1'
         );
         $stmt->bind_param('ss', $identifier, $identifier);
@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_regenerate_id(true);
             $_SESSION['user_id']  = (int) $user['id'];
             $_SESSION['username'] = $user['username'];
+            $_SESSION['role']     = $user['role'];
 
             header('Location: dashboard.php');
             exit;
