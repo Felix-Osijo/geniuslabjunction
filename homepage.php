@@ -8,23 +8,23 @@ $subjects = require __DIR__ . '/includes/subjects.php';
 <main>
     <section class="hero">
         <div class="container hero-grid">
-        <div class="hero-inner">
-            <p class="eyebrow eyebrow-light">Student learning community</p>
-            <h1>Learn. Connect. Grow.</h1>
-            <p class="lead">
-                Join students across different schools, learn together, solve problems,
-                earn XP and become part of a growing educational community.
-            </p>
-            <div class="hero-actions">
-                <?php if (is_logged_in()): ?>
-                    <a class="btn btn-primary btn-lg" href="dashboard.php">Go to dashboard</a>
-                <?php else: ?>
-                    <a class="btn btn-primary btn-lg" href="register.php">Get started free</a>
-                    <a class="btn btn-light btn-lg" href="login.php">Log in</a>
-                <?php endif; ?>
+            <div class="hero-inner">
+                <p class="eyebrow eyebrow-light">Student learning community</p>
+                <h1>Learn. Connect. Grow.</h1>
+                <p class="lead">
+                    Join students across different schools, learn together, solve problems,
+                    earn XP and become part of a growing educational community.
+                </p>
+                <div class="hero-actions">
+                    <?php if (is_logged_in()): ?>
+                        <a class="btn btn-primary btn-lg" href="dashboard.php">Go to dashboard</a>
+                    <?php else: ?>
+                        <a class="btn btn-primary btn-lg" href="register.php">Get started free</a>
+                        <a class="btn btn-light btn-lg" href="login.php">Log in</a>
+                    <?php endif; ?>
                 </div>
-                <img class="hero-art" src="assets/images/genius-hub-cover.png" alt="Genius Hub Cover">
             </div>
+            <img class="hero-art" src="assets/images/genius-hub-cover.png" alt="Genius Hub cover graphic">
         </div>
     </section>
 
@@ -62,7 +62,7 @@ $subjects = require __DIR__ . '/includes/subjects.php';
             </div>
             <div class="subject-grid">
                 <?php foreach ($subjects as $slug => $name): ?>
-                    <a class="subject-card" href="subjects/<?= e($slug) ?>.php"><?= e($name) ?></a>
+                    <a class="subject-card" href="subject.php?s=<?= e(urlencode($slug)) ?>"><?= e($name) ?></a>
                 <?php endforeach; ?>
                 <span class="subject-card is-soon">
                     Genius Hub Campus <small class="tag">Coming soon</small>

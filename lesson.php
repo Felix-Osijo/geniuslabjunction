@@ -3,6 +3,7 @@ require __DIR__ . '/includes/auth.php';
 require __DIR__ . '/includes/db.php';
 require __DIR__ . '/includes/xp.php';
 require __DIR__ . '/includes/learning.php';
+require __DIR__ . '/includes/moderation.php';
 
 $subjects    = require __DIR__ . '/includes/subjects.php';
 $subjectSlug = (string) ($_GET['subject'] ?? '');
@@ -30,15 +31,27 @@ function lesson_not_found(): void
     exit;
 }
 
+$userId  = (int) ($_SESSION['user_id'] ?? 0);
+$isAdmin = $userId > 0 && user_role($conn, $userId) === 'admin' ? 1 : 0;
+
 if (!isset($subjects[$subjectSlug])) {
-    lesson_not_found();
+    $stmt = $conn->prepare('SELECT name FROM subjects WHERE slug = ?');
+    $stmt->bind_param('s', $subjectSlug);
+    $stmt->execute();
+    $hidden = $stmt->get_result()->fetch_assoc();
+
+    if ($hidden && $isAdmin) {
+        $subjects[$subjectSlug] = $hidden['name'];
+    } else {
+        lesson_not_found();
+    }
 }
 
 $stmt = $conn->prepare(
-    'SELECT id, title, summary, body FROM lessons
-     WHERE subject_slug = ? AND slug = ? AND published = 1'
+    'SELECT id, title, summary, body, published FROM lessons
+     WHERE subject_slug = ? AND slug = ? AND (published = 1 OR ? = 1)'
 );
-$stmt->bind_param('ss', $subjectSlug, $lessonSlug);
+$stmt->bind_param('ssi', $subjectSlug, $lessonSlug, $isAdmin);
 $stmt->execute();
 $lesson = $stmt->get_result()->fetch_assoc();
 
@@ -47,23 +60,19 @@ if (!$lesson) {
 }
 
 $lessonId    = (int) $lesson['id'];
-$userId      = (int) ($_SESSION['user_id'] ?? 0);
 $subjectName = $subjects[$subjectSlug];
 $selfUrl     = 'lesson.php?subject=' . urlencode($subjectSlug) . '&lesson=' . urlencode($lessonSlug);
 $optionCols  = ['A' => 'option_a', 'B' => 'option_b', 'C' => 'option_c', 'D' => 'option_d'];
 
-$stmt = $conn->prepare(
-    'SELECT id, question, option_a, option_b, option_c, option_d, correct_option, explanation
-     FROM quiz_questions WHERE lesson_id = ? ORDER BY sort_order, id'
-);
-$stmt->bind_param('i', $lessonId);
-$stmt->execute();
-$questions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$bankCount = count_quiz_bank($conn, $lessonId);
+$errors    = [];
+$result    = null;
+$questions = [];
+$token     = '';
+$served    = $_SESSION['quiz'][$lessonId] ?? [];
 
-$errors = [];
-$result = null;
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $questions) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $bankCount > 0) {
+    $token   = (string) ($_POST['token'] ?? '');
     $answers = $_POST['answer'] ?? [];
     $answers = is_array($answers) ? $answers : [];
 
@@ -71,68 +80,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $questions) {
         $errors[] = 'Log in to take the quiz.';
     } elseif (!csrf_valid()) {
         $errors[] = 'Your session expired. Please try again.';
+    } elseif (!isset($served[$token])) {
+        $errors[] = 'That quiz expired. Here is a fresh set of questions.';
     } else {
-        $correct = 0;
-        $review  = [];
-        $missing = false;
+        $questions = load_quiz_questions($conn, $lessonId, $served[$token]);
 
-        foreach ($questions as $q) {
-            $given = $answers[$q['id']] ?? '';
-            $given = is_string($given) ? strtoupper($given) : '';
-
-            if (!isset($optionCols[$given])) {
-                $missing = true;
-                break;
-            }
-
-            $right = $given === $q['correct_option'];
-            $correct += $right ? 1 : 0;
-            $review[$q['id']] = ['given' => $given, 'right' => $right];
-        }
-
-        if ($missing) {
-            $errors[] = 'Answer every question before submitting.';
+        if (!$questions) {
+            $errors[] = 'That quiz expired. Here is a fresh set of questions.';
         } else {
-            $total   = count($questions);
-            $percent = (int) round($correct / $total * 100);
-            $passed  = $percent >= QUIZ_PASS_PERCENT;
+            $correct = 0;
+            $review  = [];
+            $missing = false;
 
-            if ($passed) {
-                $stmt = $conn->prepare(
-                    'INSERT IGNORE INTO lesson_completions (user_id, lesson_id, best_score) VALUES (?, ?, ?)'
-                );
-                $stmt->bind_param('iii', $userId, $lessonId, $percent);
-                $stmt->execute();
+            foreach ($questions as $q) {
+                $given = $answers[$q['id']] ?? '';
+                $given = is_string($given) ? strtoupper($given) : '';
 
-                if ($stmt->affected_rows === 1) {
-                    $reason = 'Completed lesson: ' . mb_substr($lesson['title'], 0, 60);
-                    $earned = award_xp($conn, $userId, XP_LESSON, $reason);
-                    $message = $earned > 0
-                        ? "Lesson complete! +$earned XP."
-                        : 'Lesson complete! You have reached today\'s XP limit, so no XP this time.';
-                } else {
-                    $stmt = $conn->prepare(
-                        'UPDATE lesson_completions SET best_score = GREATEST(best_score, ?)
-                         WHERE user_id = ? AND lesson_id = ?'
-                    );
-                    $stmt->bind_param('iii', $percent, $userId, $lessonId);
-                    $stmt->execute();
-                    $message = 'You passed again. XP is only awarded the first time.';
+                if (!isset($optionCols[$given])) {
+                    $missing = true;
+                    break;
                 }
-            } else {
-                $message = 'Not quite. Read the lesson again and give it another try.';
+
+                $right    = $given === $q['correct_option'];
+                $correct += $right ? 1 : 0;
+                $review[$q['id']] = ['given' => $given, 'right' => $right];
             }
 
-            $result = [
-                'correct' => $correct,
-                'total'   => $total,
-                'percent' => $percent,
-                'passed'  => $passed,
-                'message' => $message,
-                'review'  => $review,
-            ];
+            if ($missing) {
+                $errors[] = 'Answer every question before submitting.';
+            } else {
+                $total   = count($questions);
+                $percent = (int) round($correct / $total * 100);
+                $passed  = $percent >= QUIZ_PASS_PERCENT;
+
+                if ($passed) {
+                    $stmt = $conn->prepare(
+                        'INSERT IGNORE INTO lesson_completions (user_id, lesson_id, best_score) VALUES (?, ?, ?)'
+                    );
+                    $stmt->bind_param('iii', $userId, $lessonId, $percent);
+                    $stmt->execute();
+
+                    if ($stmt->affected_rows === 1) {
+                        $reason = 'Completed lesson: ' . mb_substr($lesson['title'], 0, 60);
+                        $earned = award_xp($conn, $userId, XP_LESSON, $reason);
+                        $message = $earned > 0
+                            ? "Lesson complete! +$earned XP."
+                            : 'Lesson complete! You have reached today\'s XP limit, so no XP this time.';
+                    } else {
+                        $stmt = $conn->prepare(
+                            'UPDATE lesson_completions SET best_score = GREATEST(best_score, ?)
+                             WHERE user_id = ? AND lesson_id = ?'
+                        );
+                        $stmt->bind_param('iii', $percent, $userId, $lessonId);
+                        $stmt->execute();
+                        $message = 'You passed again. XP is only awarded the first time.';
+                    }
+                } else {
+                    $message = 'Not quite. Read the lesson again and give it another try.';
+                }
+
+                unset($_SESSION['quiz'][$lessonId][$token]);
+                $token = '';
+
+                $result = [
+                    'correct' => $correct,
+                    'total'   => $total,
+                    'percent' => $percent,
+                    'passed'  => $passed,
+                    'message' => $message,
+                    'review'  => $review,
+                ];
+            }
         }
     }
+
+    if ($errors && !$questions) {
+        $token = '';
+    }
+}
+
+if (!$result && !$questions && $bankCount > 0 && is_logged_in()) {
+    $token = bin2hex(random_bytes(16));
+    $_SESSION['quiz'][$lessonId][$token] = pick_quiz_ids($conn, $lessonId);
+
+    if (count($_SESSION['quiz'][$lessonId]) > 5) {
+        $_SESSION['quiz'][$lessonId] = array_slice($_SESSION['quiz'][$lessonId], -5, null, true);
+    }
+
+    $questions = load_quiz_questions($conn, $lessonId, $_SESSION['quiz'][$lessonId][$token]);
 }
 
 $best = null;
@@ -166,7 +201,7 @@ require __DIR__ . '/includes/header.php';
 <main>
     <section class="page-hero page-hero-left">
         <div class="container">
-            <p class="eyebrow"><a href="subjects/<?= e($subjectSlug) ?>.php"><?= e($subjectName) ?></a></p>
+            <p class="eyebrow"><a href="subject.php?s=<?= e(urlencode($subjectSlug)) ?>"><?= e($subjectName) ?></a></p>
             <h1><?= e($lesson['title']) ?></h1>
             <p><?= e($lesson['summary']) ?></p>
         </div>
@@ -175,15 +210,23 @@ require __DIR__ . '/includes/header.php';
     <section class="section section-tight">
         <div class="container narrow stack">
 
+            <?php if (!$lesson['published']): ?>
+                <div class="alert alert-info" role="status">Draft: only admins can see this lesson.</div>
+            <?php endif; ?>
+
             <?php if ($best !== null && !$result): ?>
                 <div class="alert alert-success" role="status">You completed this lesson. Best score: <?= $best ?>%.</div>
             <?php endif; ?>
 
             <article class="prose lesson-body"><?= render_lesson_body($lesson['body']) ?></article>
 
-            <?php if ($questions): ?>
+            <?php if ($bankCount > 0): ?>
                 <div class="panel quiz" id="quiz">
                     <h2>Quick quiz</h2>
+
+                    <?php if ($bankCount > QUIZ_SIZE): ?>
+                        <p class="muted">Each attempt shows <?= QUIZ_SIZE ?> random questions from a bank of <?= $bankCount ?>, so no two attempts are the same.</p>
+                    <?php endif; ?>
 
                     <?php if ($errors): ?>
                         <div class="alert alert-error" role="alert">
@@ -222,11 +265,12 @@ require __DIR__ . '/includes/header.php';
                             </div>
                         <?php endforeach; ?>
 
-                        <a class="btn btn-secondary" href="<?= e($selfUrl) ?>#quiz">Retake quiz</a>
+                        <a class="btn btn-secondary" href="<?= e($selfUrl) ?>#quiz">Retake with new questions</a>
 
                     <?php elseif (is_logged_in()): ?>
                         <form method="post" action="<?= e($selfUrl) ?>#quiz" class="quiz">
                             <?= csrf_field() ?>
+                            <input type="hidden" name="token" value="<?= e($token) ?>">
                             <?php foreach ($questions as $i => $q): ?>
                                 <fieldset class="quiz-q">
                                     <legend><?= $i + 1 ?>. <?= e($q['question']) ?></legend>

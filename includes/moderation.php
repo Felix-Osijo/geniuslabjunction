@@ -54,6 +54,10 @@ function delete_post(mysqli $conn, int $postId): void
         $stmt->bind_param('i', $postId);
         $stmt->execute();
 
+        $stmt = $conn->prepare('DELETE FROM likes WHERE post_id = ?');
+        $stmt->bind_param('i', $postId);
+        $stmt->execute();
+
         $stmt = $conn->prepare('DELETE FROM posts WHERE id = ?');
         $stmt->bind_param('i', $postId);
         $stmt->execute();

@@ -49,6 +49,7 @@ require __DIR__ . '/includes/header.php';
             <p class="eyebrow">Dashboard</p>
             <h1>Welcome back, <?= e($user['username']) ?> 👋</h1>
             <p>Keep learning, join the conversation and climb the leaderboard.</p>
+            <p><a class="btn btn-secondary btn-sm" href="profile.php?u=<?= e(urlencode($user['username'])) ?>">View my profile</a></p>
         </div>
     </section>
 
@@ -79,7 +80,7 @@ require __DIR__ . '/includes/header.php';
                             <li class="<?= (int) $row['id'] === $userId ? 'is-you' : '' ?>">
                                 <span class="rank-pos"><?= $medals[$i] ?></span>
                                 <span class="rank-name">
-                                    <?= e($row['username']) ?>
+                                    <a href="profile.php?u=<?= e(urlencode($row['username'])) ?>"><?= e($row['username']) ?></a>
                                     <?= (int) $row['id'] === $userId ? '<em>(you)</em>' : '' ?>
                                 </span>
                                 <span class="rank-xp"><?= number_format((int) $row['xp']) ?> XP</span>
@@ -109,7 +110,7 @@ require __DIR__ . '/includes/header.php';
                     <h2>Subjects</h2>
                     <div class="chip-list">
                         <?php foreach ($subjects as $slug => $name): ?>
-                            <a class="chip" href="subjects/<?= e($slug) ?>.php"><?= e($name) ?></a>
+                            <a class="chip" href="subject.php?s=<?= e(urlencode($slug)) ?>"><?= e($name) ?></a>
                         <?php endforeach; ?>
                     </div>
                 </div>

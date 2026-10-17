@@ -120,6 +120,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: feed.php');
             exit;
         }
+    } elseif ($action === 'like') {
+        $postId = (int) ($_POST['post_id'] ?? 0);
+
+        if (owner_of($conn, 'post', $postId) === null) {
+            $errors[] = 'That post no longer exists.';
+        } else {
+            $stmt = $conn->prepare('DELETE FROM likes WHERE user_id = ? AND post_id = ?');
+            $stmt->bind_param('ii', $userId, $postId);
+            $stmt->execute();
+
+            if ($stmt->affected_rows === 0) {
+                $stmt = $conn->prepare('INSERT IGNORE INTO likes (user_id, post_id) VALUES (?, ?)');
+                $stmt->bind_param('ii', $userId, $postId);
+                $stmt->execute();
+            }
+
+            header('Location: feed.php#post-' . $postId);
+            exit;
+        }
     } elseif ($action === 'report') {
         $type   = $_POST['type'] ?? '';
         $id     = (int) ($_POST['id'] ?? 0);
@@ -155,7 +174,9 @@ $flash = $_SESSION['flash'] ?? '';
 unset($_SESSION['flash']);
 
 $posts = $conn->query(
-    'SELECT p.id, p.user_id, p.content, p.created_at, u.username
+    'SELECT p.id, p.user_id, p.content, p.created_at, u.username,
+            (SELECT COUNT(*) FROM likes lk WHERE lk.post_id = p.id) AS like_count,
+            EXISTS(SELECT 1 FROM likes lk2 WHERE lk2.post_id = p.id AND lk2.user_id = ' . $userId . ') AS liked
      FROM posts p
      JOIN users u ON u.id = p.user_id
      ORDER BY p.created_at DESC, p.id DESC
@@ -238,7 +259,7 @@ require __DIR__ . '/includes/header.php';
                             <header class="post-head">
                                 <span class="avatar" aria-hidden="true"><?= e(strtoupper(mb_substr($post['username'], 0, 1))) ?></span>
                                 <div class="post-meta">
-                                    <strong><?= e($post['username']) ?></strong>
+                                    <strong><a href="profile.php?u=<?= e(urlencode($post['username'])) ?>"><?= e($post['username']) ?></a></strong>
                                     <time datetime="<?= e($post['created_at']) ?>"><?= e(date('j M Y, g:i A', strtotime($post['created_at']))) ?></time>
                                 </div>
                             </header>
@@ -246,7 +267,19 @@ require __DIR__ . '/includes/header.php';
                             <p class="post-body"><?= nl2br(e($post['content'])) ?></p>
 
                             <div class="post-foot">
-                                <p class="post-stats"><?= $count ?> <?= $count === 1 ? 'comment' : 'comments' ?></p>
+                                <div class="post-counts">
+                                    <form method="post" action="feed.php#post-<?= $postId ?>">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="like">
+                                        <input type="hidden" name="post_id" value="<?= $postId ?>">
+                                        <button type="submit" class="like-btn<?= $post['liked'] ? ' is-liked' : '' ?>"
+                                                aria-label="<?= $post['liked'] ? 'Unlike' : 'Like' ?> this post">
+                                            <span aria-hidden="true"><?= $post['liked'] ? '♥' : '♡' ?></span>
+                                            <?= (int) $post['like_count'] ?>
+                                        </button>
+                                    </form>
+                                    <p class="post-stats"><?= $count ?> <?= $count === 1 ? 'comment' : 'comments' ?></p>
+                                </div>
                                 <?php item_actions('post', $postId, $ownPost || $isAdmin, !$ownPost && !$isAdmin); ?>
                             </div>
 
@@ -256,7 +289,7 @@ require __DIR__ . '/includes/header.php';
                                     <div class="comment">
                                         <span class="avatar avatar-sm" aria-hidden="true"><?= e(strtoupper(mb_substr($c['username'], 0, 1))) ?></span>
                                         <div class="comment-body">
-                                            <strong><?= e($c['username']) ?></strong>
+                                            <strong><a href="profile.php?u=<?= e(urlencode($c['username'])) ?>"><?= e($c['username']) ?></a></strong>
                                             <time datetime="<?= e($c['created_at']) ?>"><?= e(date('j M, g:i A', strtotime($c['created_at']))) ?></time>
                                             <p><?= nl2br(e($c['comment'])) ?></p>
                                             <?php item_actions('comment', (int) $c['id'], $ownComment || $isAdmin, !$ownComment && !$isAdmin); ?>

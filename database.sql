@@ -206,3 +206,34 @@ CREATE TABLE lesson_completions (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+CREATE TABLE likes (
+    user_id INT NOT NULL,
+    post_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, post_id),
+    INDEX idx_post (post_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+CREATE TABLE subjects (
+    slug VARCHAR(30) NOT NULL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(255) NOT NULL DEFAULT '',
+    sort_order INT NOT NULL DEFAULT 0,
+    published TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO subjects (slug, name, sort_order) VALUES
+('physics', 'Physics', 1),
+('chemistry', 'Chemistry', 2),
+('biology', 'Biology', 3),
+('mathematics', 'Mathematics', 4),
+('fmath', 'Further Mathematics', 5),
+('economics', 'Economics', 6),
+('commerce', 'Commerce', 7),
+('faccount', 'Financial Accounting', 8),
+('literature', 'Literature in English', 9),
+('government', 'Government', 10);
