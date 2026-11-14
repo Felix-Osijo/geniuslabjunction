@@ -49,6 +49,7 @@ $rank        = count_for($conn, 'SELECT COUNT(*) + 1 FROM users WHERE xp > ?', (
 $postCount   = count_for($conn, 'SELECT COUNT(*) FROM posts WHERE user_id = ?', $profileId);
 $likesGained = count_for($conn, 'SELECT COUNT(*) FROM likes l JOIN posts p ON p.id = l.post_id WHERE p.user_id = ?', $profileId);
 $lessonsDone = count_for($conn, 'SELECT COUNT(*) FROM lesson_completions WHERE user_id = ?', $profileId);
+$challengeWins = count_for($conn, 'SELECT COUNT(*) FROM challenges WHERE winner_id = ?', $profileId);
 
 $stmt = $conn->prepare(
     'SELECT p.id, p.content, p.created_at,
@@ -76,6 +77,8 @@ require __DIR__ . '/includes/header.php';
                 <p>Member since <?= e(date('F Y', strtotime($profile['created_at']))) ?></p>
                 <?php if ($isOwn): ?>
                     <p><a class="btn btn-secondary btn-sm" href="account.php">Change password</a></p>
+                <?php else: ?>
+                    <p><a class="btn btn-primary btn-sm" href="challenge-new.php?to=<?= e(urlencode($profile['username'])) ?>">Challenge to a quiz</a></p>
                 <?php endif; ?>
             </div>
         </div>
@@ -100,6 +103,10 @@ require __DIR__ . '/includes/header.php';
                 <div class="stat-card">
                     <span class="stat-label">Lessons completed</span>
                     <span class="stat-value"><?= $lessonsDone ?></span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Challenge wins</span>
+                    <span class="stat-value"><?= $challengeWins ?></span>
                 </div>
             </div>
 

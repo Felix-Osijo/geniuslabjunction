@@ -54,7 +54,20 @@ function require_login(): void
 function redirect_if_logged_in(): void
 {
     if (is_logged_in()) {
-        header('Location: dashboard.php');
+        header('Location: feed.php');
         exit;
     }
+}
+
+function normalize_phone(string $raw): ?string
+{
+    $s = preg_replace('/[\s\-().]/', '', $raw);
+
+    if (preg_match('/^0\d{10}$/', $s)) {
+        $s = '+234' . substr($s, 1);
+    } elseif (preg_match('/^234\d{10}$/', $s)) {
+        $s = '+' . $s;
+    }
+
+    return preg_match('/^\+\d{8,15}$/', $s) ? $s : null;
 }

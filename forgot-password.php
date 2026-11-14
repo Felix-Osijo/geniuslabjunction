@@ -70,7 +70,7 @@ require __DIR__ . '/includes/header.php';
         <?php else: ?>
             <form class="form" method="post" action="forgot-password.php" novalidate>
                 <h2>Forgot password?</h2>
-                <p class="form-text">Enter your email and we'll send you a reset link.</p>
+                <p class="form-text">Enter your email and we'll send you a reset link. Signed up with a phone number? Ask an admin to reset your password.</p>
 
                 <?php if ($error !== ''): ?>
                     <div class="alert alert-error" role="alert"><?= e($error) ?></div>

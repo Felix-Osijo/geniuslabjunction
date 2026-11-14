@@ -118,6 +118,7 @@ require __DIR__ . '/includes/header.php';
                                 </div>
                                 <div class="admin-row-actions">
                                     <a class="btn btn-secondary btn-sm" href="admin-lesson-edit.php?id=<?= (int) $l['id'] ?>">Edit</a>
+                                    <a class="btn btn-secondary btn-sm" href="admin-quiz-import.php?lesson=<?= (int) $l['id'] ?>">Import quiz</a>
                                     <a class="btn btn-secondary btn-sm" target="_blank" rel="noopener"
                                        href="lesson.php?subject=<?= e(urlencode($l['subject_slug'])) ?>&amp;lesson=<?= e(urlencode($l['slug'])) ?>">Preview</a>
                                     <form method="post" action="admin-lessons.php">

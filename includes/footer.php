@@ -16,7 +16,9 @@ $showFooter = $showFooter ?? true;
         <ul class="footer-links">
             <li><a href="<?= e($base) ?>about.php">About</a></li>
             <li><a href="<?= e($base) ?>privacy-policy.php">Privacy Policy</a></li>
+            <?php if (!is_logged_in()): ?>
             <li><a href="<?= e($base) ?>register.php">Create account</a></li>
+            <?php endif; ?>
         </ul>
     </div>
     <div class="container footer-bottom">

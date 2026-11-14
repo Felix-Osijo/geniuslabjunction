@@ -27,9 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $stmt = $conn->prepare(
             'SELECT id, username, password, role FROM users
-             WHERE email = ? OR username = ? LIMIT 1'
+             WHERE email = ? OR username = ? OR phone = ? LIMIT 1'
         );
-        $stmt->bind_param('ss', $identifier, $identifier);
+        $phoneKey = normalize_phone($identifier) ?? '-';
+        $stmt->bind_param('sss', $identifier, $identifier, $phoneKey);
         $stmt->execute();
         $user = $stmt->get_result()->fetch_assoc();
 
@@ -50,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['username'] = $user['username'];
             $_SESSION['role']     = $user['role'];
 
-            header('Location: dashboard.php');
+            header('Location: feed.php');
             exit;
         }
 
@@ -95,7 +96,7 @@ require __DIR__ . '/includes/header.php';
             <?= csrf_field() ?>
 
             <div class="field">
-                <label for="identifier">Email or username</label>
+                <label for="identifier">Email, phone or username</label>
                 <input type="text" id="identifier" name="identifier"
                        value="<?= e($identifier) ?>"
                        autocomplete="username" required autofocus>

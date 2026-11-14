@@ -3,6 +3,20 @@ const XP_LESSON         = 10;
 const QUIZ_PASS_PERCENT = 70;
 const QUIZ_SIZE         = 10;
 
+function render_inline(string $text): string
+{
+    $html = e($text);
+
+    $html = preg_replace('/\*\*(?!\s)(.+?)(?<!\s)\*\*/s', '<strong>$1</strong>', $html);
+    $html = preg_replace('/\*(?!\s)(.+?)(?<!\s)\*/s', '<em>$1</em>', $html);
+    $html = preg_replace('/\+\+(?!\s)(.+?)(?<!\s)\+\+/s', '<u>$1</u>', $html);
+    $html = preg_replace('/==(?!\s)(.+?)(?<!\s)==/s', '<mark>$1</mark>', $html);
+    $html = preg_replace('/\^\{(.+?)\}/', '<sup>$1</sup>', $html);
+    $html = preg_replace('/_\{(.+?)\}/', '<sub>$1</sub>', $html);
+
+    return $html;
+}
+
 function render_lesson_body(string $body): string
 {
     $html = '';
@@ -13,26 +27,35 @@ function render_lesson_body(string $body): string
             continue;
         }
 
-        if (str_starts_with($block, '## ')) {
-            $parts = preg_split('/\R/', $block, 2);
-            $html .= '<h2>' . e(substr($parts[0], 3)) . '</h2>';
-            $block = trim($parts[1] ?? '');
-            if ($block === '') {
-                continue;
-            }
+        $lines = preg_split('/\R/', $block);
+
+        if (preg_match('/^(##|###) (.+)$/', $lines[0], $m)) {
+            $tag   = strlen($m[1]) === 2 ? 'h2' : 'h3';
+            $html .= "<$tag>" . render_inline($m[2]) . "</$tag>";
+            array_shift($lines);
         }
 
-        $lines  = preg_split('/\R/', $block);
-        $bullets = array_filter($lines, fn($line) => str_starts_with($line, '- '));
+        if (!$lines) {
+            continue;
+        }
 
-        if (count($bullets) === count($lines)) {
+        $bullets = count(array_filter($lines, fn($l) => strpos($l, '- ') === 0));
+        $numbers = count(array_filter($lines, fn($l) => preg_match('/^\d+\.\s/', $l) === 1));
+
+        if ($bullets === count($lines)) {
             $html .= '<ul>';
             foreach ($lines as $line) {
-                $html .= '<li>' . e(substr($line, 2)) . '</li>';
+                $html .= '<li>' . render_inline(substr($line, 2)) . '</li>';
             }
             $html .= '</ul>';
+        } elseif ($numbers === count($lines)) {
+            $html .= '<ol>';
+            foreach ($lines as $line) {
+                $html .= '<li>' . render_inline(preg_replace('/^\d+\.\s/', '', $line)) . '</li>';
+            }
+            $html .= '</ol>';
         } else {
-            $html .= '<p>' . nl2br(e($block)) . '</p>';
+            $html .= '<p>' . nl2br(render_inline(implode("\n", $lines))) . '</p>';
         }
     }
 

@@ -97,7 +97,7 @@ require __DIR__ . '/includes/header.php';
             <p class="eyebrow">Admin</p>
             <h1>Moderation</h1>
             <p>Review reports and help students who are locked out.</p>
-            <p class="hero-actions"><a class="btn btn-primary btn-sm" href="admin-lessons.php">Manage lessons</a> <a class="btn btn-secondary btn-sm" href="admin-subjects.php">Manage subjects</a></p>
+            <p class="hero-actions"><a class="btn btn-primary btn-sm" href="admin-lessons.php">Manage lessons</a> <a class="btn btn-secondary btn-sm" href="admin-subjects.php">Manage subjects</a> <a class="btn btn-secondary btn-sm" href="admin-stats.php">View stats</a></p>
         </div>
     </section>
 

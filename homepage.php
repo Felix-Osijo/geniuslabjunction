@@ -1,4 +1,10 @@
 <?php
+require __DIR__ . '/includes/auth.php';
+if (is_logged_in()) {
+    header('Location: feed.php');
+    exit;
+}
+
 $pageTitle = 'Learn. Connect. Grow.';
 $active    = 'home';
 require __DIR__ . '/includes/header.php';

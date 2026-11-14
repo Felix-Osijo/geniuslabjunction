@@ -38,9 +38,20 @@ $stmt->execute();
 $activity = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $subjects = require __DIR__ . '/includes/subjects.php';
+
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) FROM challenges c
+     WHERE c.status = 'open' AND (c.challenger_id = ? OR c.opponent_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM challenge_attempts t
+                       WHERE t.challenge_id = c.id AND t.user_id = ? AND t.submitted_at IS NOT NULL)"
+);
+$stmt->bind_param('iii', $userId, $userId, $userId);
+$stmt->execute();
+$waiting = (int) $stmt->get_result()->fetch_row()[0];
 $medals   = ['🥇', '🥈', '🥉', '4', '5'];
 
 $pageTitle = 'Dashboard';
+$active    = 'dashboard';
 require __DIR__ . '/includes/header.php';
 ?>
 <main>
@@ -49,7 +60,10 @@ require __DIR__ . '/includes/header.php';
             <p class="eyebrow">Dashboard</p>
             <h1>Welcome back, <?= e($user['username']) ?> 👋</h1>
             <p>Keep learning, join the conversation and climb the leaderboard.</p>
-            <p><a class="btn btn-secondary btn-sm" href="profile.php?u=<?= e(urlencode($user['username'])) ?>">View my profile</a></p>
+            <p class="hero-actions">
+                <a class="btn btn-primary btn-sm" href="challenges.php">Quiz challenges</a>
+                <a class="btn btn-secondary btn-sm" href="profile.php?u=<?= e(urlencode($user['username'])) ?>">View my profile</a>
+            </p>
         </div>
     </section>
 
@@ -70,6 +84,13 @@ require __DIR__ . '/includes/header.php';
                     <span class="stat-value">#<?= $rank ?></span>
                 </div>
             </div>
+
+            <?php if ($waiting > 0): ?>
+                <div class="alert alert-info" role="status">
+                    You have <?= $waiting ?> quiz challenge<?= $waiting === 1 ? '' : 's' ?> waiting.
+                    <a href="challenges.php">Play now</a>
+                </div>
+            <?php endif; ?>
 
             <div class="panel-grid">
 

@@ -51,7 +51,7 @@ $intro = $subject['description'] !== ''
     : ($lessons ? 'Read each lesson, then take the quiz to earn XP.' : 'Lessons for ' . $subject['name'] . ' are on the way.');
 
 $pageTitle = $subject['name'];
-$active    = 'home';
+$active    = 'subjects';
 require __DIR__ . '/includes/header.php';
 ?>
 <main>

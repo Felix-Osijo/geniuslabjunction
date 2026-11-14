@@ -11,6 +11,16 @@ $isAdmin = user_role($conn, $userId) === 'admin';
 $errors  = [];
 $content = '';
 
+const FEED_PAGE = 20;
+
+$before  = max(0, (int) ($_POST['before'] ?? $_GET['before'] ?? 0));
+$feedUrl = 'feed.php' . ($before > 0 ? '?before=' . $before : '');
+
+function feed_fields(): string
+{
+    return csrf_field() . '<input type="hidden" name="before" value="' . (int) $GLOBALS['before'] . '">';
+}
+
 function item_actions(string $type, int $id, bool $canDelete, bool $canReport): void
 {
     if (!$canDelete && !$canReport) {
@@ -20,7 +30,7 @@ function item_actions(string $type, int $id, bool $canDelete, bool $canReport): 
     <div class="item-actions">
         <?php if ($canDelete): ?>
             <form method="post" action="feed.php" onsubmit="return confirm('Delete this <?= $type ?>?');">
-                <?= csrf_field() ?>
+                <?= feed_fields() ?>
                 <input type="hidden" name="action" value="delete_<?= $type ?>">
                 <input type="hidden" name="id" value="<?= $id ?>">
                 <button type="submit" class="link-btn danger">Delete</button>
@@ -30,7 +40,7 @@ function item_actions(string $type, int $id, bool $canDelete, bool $canReport): 
             <details class="report">
                 <summary>Report</summary>
                 <form method="post" action="feed.php" class="report-form">
-                    <?= csrf_field() ?>
+                    <?= feed_fields() ?>
                     <input type="hidden" name="action" value="report">
                     <input type="hidden" name="type" value="<?= $type ?>">
                     <input type="hidden" name="id" value="<?= $id ?>">
@@ -70,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash'] = "+$earned XP for posting";
             }
 
-            header('Location: feed.php');
+            header('Location: ' . $feedUrl);
             exit;
         }
     } elseif ($action === 'comment') {
@@ -95,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['flash'] = "+$earned XP for commenting";
                 }
 
-                header('Location: feed.php#post-' . $postId);
+                header('Location: ' . $feedUrl . '#post-' . $postId);
                 exit;
             } catch (mysqli_sql_exception $ex) {
                 if ((int) $ex->getCode() === 1452) {
@@ -117,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $type === 'post' ? delete_post($conn, $id) : delete_comment($conn, $id);
             $_SESSION['flash'] = ucfirst($type) . ' deleted.';
-            header('Location: feed.php');
+            header('Location: ' . $feedUrl);
             exit;
         }
     } elseif ($action === 'like') {
@@ -136,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
             }
 
-            header('Location: feed.php#post-' . $postId);
+            header('Location: ' . $feedUrl . '#post-' . $postId);
             exit;
         }
     } elseif ($action === 'report') {
@@ -163,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash'] = $stmt->affected_rows > 0
                     ? 'Thanks. We will review your report.'
                     : 'You already reported this.';
-                header('Location: feed.php');
+                header('Location: ' . $feedUrl);
                 exit;
             }
         }
@@ -179,9 +189,15 @@ $posts = $conn->query(
             EXISTS(SELECT 1 FROM likes lk2 WHERE lk2.post_id = p.id AND lk2.user_id = ' . $userId . ') AS liked
      FROM posts p
      JOIN users u ON u.id = p.user_id
-     ORDER BY p.created_at DESC, p.id DESC
-     LIMIT 20'
+     ' . ($before > 0 ? 'WHERE p.id < ' . $before : '') . '
+     ORDER BY p.id DESC
+     LIMIT ' . (FEED_PAGE + 1)
 )->fetch_all(MYSQLI_ASSOC);
+
+$hasMore = count($posts) > FEED_PAGE;
+if ($hasMore) {
+    $posts = array_slice($posts, 0, FEED_PAGE);
+}
 
 $comments = [];
 if ($posts) {
@@ -232,8 +248,9 @@ require __DIR__ . '/includes/header.php';
                 </div>
             <?php endif; ?>
 
+            <?php if ($before === 0): ?>
             <form class="panel composer" method="post" action="feed.php">
-                <?= csrf_field() ?>
+                <?= feed_fields() ?>
                 <input type="hidden" name="action" value="post">
 
                 <label class="sr-only" for="content">Write a post</label>
@@ -245,6 +262,7 @@ require __DIR__ . '/includes/header.php';
                     <button type="submit" class="btn btn-primary">Post</button>
                 </div>
             </form>
+            <?php endif; ?>
 
             <?php if ($posts): ?>
                 <div class="feed">
@@ -269,7 +287,7 @@ require __DIR__ . '/includes/header.php';
                             <div class="post-foot">
                                 <div class="post-counts">
                                     <form method="post" action="feed.php#post-<?= $postId ?>">
-                                        <?= csrf_field() ?>
+                                        <?= feed_fields() ?>
                                         <input type="hidden" name="action" value="like">
                                         <input type="hidden" name="post_id" value="<?= $postId ?>">
                                         <button type="submit" class="like-btn<?= $post['liked'] ? ' is-liked' : '' ?>"
@@ -298,7 +316,7 @@ require __DIR__ . '/includes/header.php';
                                 <?php endforeach; ?>
 
                                 <form class="comment-form" method="post" action="feed.php#post-<?= $postId ?>">
-                                    <?= csrf_field() ?>
+                                    <?= feed_fields() ?>
                                     <input type="hidden" name="action" value="comment">
                                     <input type="hidden" name="post_id" value="<?= $postId ?>">
                                     <label class="sr-only" for="comment-<?= $postId ?>">Add a comment</label>
@@ -310,6 +328,16 @@ require __DIR__ . '/includes/header.php';
                         </article>
                     <?php endforeach; ?>
                 </div>
+            <?php if ($hasMore || $before > 0): ?>
+                    <nav class="feed-more" aria-label="More posts">
+                        <?php if ($hasMore): ?>
+                            <a class="btn btn-secondary" href="feed.php?before=<?= (int) end($posts)['id'] ?>">Older posts</a>
+                        <?php endif; ?>
+                        <?php if ($before > 0): ?>
+                            <a class="btn btn-primary" href="feed.php">Back to newest</a>
+                        <?php endif; ?>
+                    </nav>
+                <?php endif; ?>
             <?php else: ?>
                 <div class="panel empty">
                     <h2>No posts yet</h2>

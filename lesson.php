@@ -195,7 +195,7 @@ foreach ($siblings as $i => $s) {
 }
 
 $pageTitle = $lesson['title'];
-$active    = 'home';
+$active    = 'subjects';
 require __DIR__ . '/includes/header.php';
 ?>
 <main>

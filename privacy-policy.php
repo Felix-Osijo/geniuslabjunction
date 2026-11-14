@@ -8,7 +8,7 @@ require __DIR__ . '/includes/header.php';
         <div class="container">
             <p class="eyebrow">Legal</p>
             <h1>Privacy Policy</h1>
-            <p>Last updated: 16 October 2026</p>
+            <p>Last updated: 7 November 2026</p>
         </div>
     </section>
 
@@ -20,7 +20,7 @@ require __DIR__ . '/includes/header.php';
 
             <h2>2. What information we collect</h2>
             <ul>
-                <li>Account details: your surname, other names, date of birth, gender, email address and username.</li>
+                <li>Account details: your name, username, email address or phone number, and your gender (you can choose "prefer not to say"). We also record the time you agreed to these rules.</li>
                 <li>Your password. We store it in a scrambled form, so we cannot read it.</li>
                 <li>What you post: your posts, comments and any reports you send.</li>
                 <li>Learning activity: your XP, level, completed lessons and quiz scores.</li>
@@ -34,7 +34,7 @@ require __DIR__ . '/includes/header.php';
                 <li>To create your account and let you log in.</li>
                 <li>To run the feed, lessons, quizzes, XP and leaderboard.</li>
                 <li>To keep the community safe, including reviewing reports and stopping repeated wrong-password attempts.</li>
-                <li>To check that you meet the age rule.</li>
+                <li>To keep a record that you agreed to these rules and to our age rule.</li>
             </ul>
             <p>We use your information because you agree to it when you sign up. You can take that agreement back at any time (see section 7).</p>
 
@@ -64,7 +64,7 @@ require __DIR__ . '/includes/header.php';
             <p>Email felixdamilola11@gmail.com and we will reply within 30 days. If you are not happy with our answer, you can complain to the Nigeria Data Protection Commission.</p>
 
             <h2>8. Young people</h2>
-            <p>You must be at least 13 to use Genius Hub. If you are under 18, you need your parent or guardian's permission to use it. Parents and guardians can email us to see, correct or delete their child's information.</p>
+            <p>We do not ask for your date of birth. When you sign up, you confirm that you are at least 13 and that, if you are under 18, your parent, guardian or school knows you are joining. Parents and guardians can email us to see, correct or delete their child's information.</p>
 
             <h2>9. Changes to this policy</h2>
             <p>If we change this policy, we will update the date at the top of this page.</p>

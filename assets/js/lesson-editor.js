@@ -40,3 +40,34 @@
         if (next >= window.QUIZ.max) button.disabled = true;
     });
 })();
+
+(function () {
+    var bar = document.querySelector('.format-bar');
+    var area = document.getElementById('body');
+    if (!bar || !area) return;
+
+    bar.addEventListener('click', function (event) {
+        var button = event.target.closest('button');
+        if (!button) return;
+
+        var start = area.selectionStart;
+        var end = area.selectionEnd;
+        var value = area.value;
+        var selected = value.slice(start, end);
+        var wrap = button.getAttribute('data-wrap');
+        var line = button.getAttribute('data-line');
+
+        if (wrap) {
+            var parts = wrap.split('|');
+            area.value = value.slice(0, start) + parts[0] + selected + parts[1] + value.slice(end);
+            var cursor = selected ? end + parts[0].length + parts[1].length : start + parts[0].length;
+            area.setSelectionRange(cursor, cursor);
+        } else if (line) {
+            var lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            area.value = value.slice(0, lineStart) + line + value.slice(lineStart);
+            area.setSelectionRange(start + line.length, end + line.length);
+        }
+
+        area.focus();
+    });
+})();

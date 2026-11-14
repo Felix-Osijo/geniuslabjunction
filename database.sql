@@ -237,3 +237,48 @@ INSERT INTO subjects (slug, name, sort_order) VALUES
 ('faccount', 'Financial Accounting', 8),
 ('literature', 'Literature in English', 9),
 ('government', 'Government', 10);
+
+
+CREATE TABLE challenges (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    challenger_id INT NOT NULL,
+    opponent_id INT NOT NULL,
+    topic VARCHAR(255) NOT NULL,
+    question_ids TEXT NOT NULL,
+    question_count SMALLINT UNSIGNED NOT NULL,
+    time_limit_min SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    status ENUM('open','done','expired') NOT NULL DEFAULT 'open',
+    winner_id INT NULL,
+    xp_awarded TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    completed_at DATETIME NULL,
+    INDEX idx_challenger (challenger_id, status),
+    INDEX idx_opponent (opponent_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE challenge_attempts (
+    challenge_id INT NOT NULL,
+    user_id INT NOT NULL,
+    started_at DATETIME NOT NULL,
+    submitted_at DATETIME NULL,
+    score SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    time_taken INT UNSIGNED NOT NULL DEFAULT 0,
+    answers TEXT NULL,
+    PRIMARY KEY (challenge_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+ALTER TABLE users
+    ADD COLUMN full_name VARCHAR(100) NOT NULL DEFAULT '' AFTER id,
+    ADD COLUMN phone VARCHAR(20) NULL,
+    ADD COLUMN consented_at DATETIME NULL,
+    MODIFY surname VARCHAR(100) NULL,
+    MODIFY othernames VARCHAR(100) NULL,
+    MODIFY dob DATE NULL,
+    MODIFY email VARCHAR(150) NULL,
+    ADD UNIQUE KEY uniq_phone (phone);
+
+UPDATE users
+SET full_name = TRIM(CONCAT(COALESCE(othernames, ''), ' ', COALESCE(surname, '')))
+WHERE full_name = '';

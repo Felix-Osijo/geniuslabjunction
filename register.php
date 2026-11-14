@@ -4,56 +4,49 @@ require __DIR__ . '/includes/db.php';
 
 redirect_if_logged_in();
 
-const MIN_AGE = 13; // change this if your audience is different
+const GENDERS = [
+    'male'              => 'Male',
+    'female'            => 'Female',
+    'prefer_not_to_say' => 'Prefer not to say',
+];
 
 $errors = [];
-$old = [
-    'surname'    => '',
-    'othernames' => '',
-    'dob'        => '',
-    'gender'     => '',
-    'email'      => '',
-    'username'   => '',
-];
+$old = ['name' => '', 'contact' => '', 'username' => '', 'gender' => 'prefer_not_to_say'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach ($old as $key => $_) {
-        $old[$key] = trim($_POST[$key] ?? '');
+        $old[$key] = trim((string) ($_POST[$key] ?? ''));
     }
-    $old['email'] = strtolower($old['email']);
-    $password = $_POST['password'] ?? '';
-    $confirm  = $_POST['confirmPassword'] ?? '';
+    $password = (string) ($_POST['password'] ?? '');
+    $confirm  = (string) ($_POST['confirmPassword'] ?? '');
+
+    $email = null;
+    $phone = null;
 
     if (!csrf_valid()) {
         $errors[] = 'Your session expired. Please try again.';
     } else {
-        if ($old['surname'] === '' || mb_strlen($old['surname']) > 100) {
-            $errors[] = 'Enter your surname (up to 100 characters).';
-        }
-        if ($old['othernames'] === '' || mb_strlen($old['othernames']) > 100) {
-            $errors[] = 'Enter your other names (up to 100 characters).';
+        if ($old['name'] === '' || mb_strlen($old['name']) > 100) {
+            $errors[] = 'Enter your name (up to 100 characters).';
         }
 
-        $dob = DateTime::createFromFormat('Y-m-d', $old['dob']);
-        if (!$dob || $dob->format('Y-m-d') !== $old['dob']) {
-            $errors[] = 'Enter a valid date of birth.';
+        if (strpos($old['contact'], '@') !== false) {
+            $email = strtolower($old['contact']);
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 150) {
+                $errors[] = 'Enter a valid email address.';
+            }
         } else {
-            $age = $dob->diff(new DateTime('today'))->y;
-            if ($dob > new DateTime('today') || $age > 100) {
-                $errors[] = 'Enter a valid date of birth.';
-            } elseif ($age < MIN_AGE) {
-                $errors[] = 'You must be at least ' . MIN_AGE . ' years old to join.';
+            $phone = normalize_phone($old['contact']);
+            if ($phone === null) {
+                $errors[] = 'Enter a valid email address or phone number.';
             }
         }
 
-        if (!in_array($old['gender'], ['male', 'female'], true)) {
-            $errors[] = 'Select your gender.';
+        if (!isset(GENDERS[$old['gender']])) {
+            $errors[] = 'Choose one of the gender options.';
         }
-        if (!filter_var($old['email'], FILTER_VALIDATE_EMAIL) || strlen($old['email']) > 150) {
-            $errors[] = 'Enter a valid email address.';
-        }
-        if (!preg_match('/^[A-Za-z0-9_]{3,30}$/', $old['username'])) {
-            $errors[] = 'Username must be 3-30 characters: letters, numbers and underscores only.';
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9_]{2,29}$/', $old['username'])) {
+            $errors[] = 'Username must be 3-30 characters, start with a letter, and use only letters, numbers and underscores.';
         }
         if (strlen($password) < 8) {
             $errors[] = 'Password must be at least 8 characters.';
@@ -62,8 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($password !== $confirm) {
             $errors[] = 'Passwords do not match.';
         }
-        if (empty($_POST['terms'])) {
-            $errors[] = 'You must accept the Privacy Policy to continue.';
+        if (empty($_POST['terms']) || empty($_POST['age']) || empty($_POST['guardian'])) {
+            $errors[] = 'Please tick all three boxes to continue.';
         }
     }
 
@@ -71,25 +64,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $conn->prepare(
-                'INSERT INTO users (surname, othernames, dob, gender, email, username, password)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO users (full_name, email, phone, gender, username, password, consented_at)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW())'
             );
-            $stmt->bind_param(
-                'sssssss',
-                $old['surname'], $old['othernames'], $old['dob'], $old['gender'],
-                $old['email'], $old['username'], $hash
-            );
+            $stmt->bind_param('ssssss', $old['name'], $email, $phone, $old['gender'], $old['username'], $hash);
             $stmt->execute();
 
             session_regenerate_id(true);
             $_SESSION['user_id']  = (int) $stmt->insert_id;
             $_SESSION['username'] = $old['username'];
+            $_SESSION['role']     = 'user';
 
-            header('Location: dashboard.php');
+            header('Location: feed.php');
             exit;
         } catch (mysqli_sql_exception $ex) {
-            if ((int) $ex->getCode() === 1062) { // duplicate email or username
-                $errors[] = 'That email or username is already taken.';
+            if ((int) $ex->getCode() === 1062) {
+                $errors[] = 'That username, email or phone number is already registered.';
             } else {
                 error_log('Genius Hub register failed: ' . $ex->getMessage());
                 $errors[] = 'Something went wrong on our side. Please try again.';
@@ -121,7 +111,7 @@ require __DIR__ . '/includes/header.php';
     <section class="auth-panel">
         <form class="form" method="post" action="register.php" novalidate>
             <h2>Create account</h2>
-            <p class="form-text">Start your Genius Hub journey.</p>
+            <p class="form-text">It takes less than a minute.</p>
 
             <?php if ($errors): ?>
                 <div class="alert alert-error" role="alert">
@@ -135,46 +125,33 @@ require __DIR__ . '/includes/header.php';
 
             <?= csrf_field() ?>
 
-            <div class="field-row">
-                <div class="field">
-                    <label for="surname">Surname</label>
-                    <input type="text" id="surname" name="surname" maxlength="100"
-                           value="<?= e($old['surname']) ?>" autocomplete="family-name" required>
-                </div>
-                <div class="field">
-                    <label for="othernames">Other names</label>
-                    <input type="text" id="othernames" name="othernames" maxlength="100"
-                           value="<?= e($old['othernames']) ?>" autocomplete="given-name" required>
-                </div>
-            </div>
-
-            <div class="field-row">
-                <div class="field">
-                    <label for="dob">Date of birth</label>
-                    <input type="date" id="dob" name="dob"
-                           value="<?= e($old['dob']) ?>" autocomplete="bday" required>
-                </div>
-                <div class="field">
-                    <label for="gender">Gender</label>
-                    <select id="gender" name="gender" required>
-                        <option value="">Select</option>
-                        <option value="male"<?= $old['gender'] === 'male' ? ' selected' : '' ?>>Male</option>
-                        <option value="female"<?= $old['gender'] === 'female' ? ' selected' : '' ?>>Female</option>
-                    </select>
-                </div>
-            </div>
-
             <div class="field">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" maxlength="150"
-                       value="<?= e($old['email']) ?>" autocomplete="email" required>
+                <label for="name">Name</label>
+                <input type="text" id="name" name="name" maxlength="100"
+                       value="<?= e($old['name']) ?>" autocomplete="name" required>
             </div>
 
             <div class="field">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" maxlength="30"
                        value="<?= e($old['username']) ?>" autocomplete="username" required>
-                <small class="hint">Letters, numbers and underscores. 3-30 characters.</small>
+                <small class="hint">3-30 characters, starting with a letter. Letters, numbers and underscores only.</small>
+            </div>
+
+            <div class="field">
+                <label for="contact">Email or phone number</label>
+                <input type="text" id="contact" name="contact" maxlength="150"
+                       value="<?= e($old['contact']) ?>" required>
+                <small class="hint">Email lets you reset your own password. For a number outside Nigeria, start with + and the country code.</small>
+            </div>
+
+            <div class="field">
+                <label for="gender">Gender</label>
+                <select id="gender" name="gender" required>
+                    <?php foreach (GENDERS as $value => $label): ?>
+                        <option value="<?= e($value) ?>"<?= $old['gender'] === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
 
             <div class="field-row">
@@ -193,7 +170,15 @@ require __DIR__ . '/includes/header.php';
 
             <label class="checkbox">
                 <input type="checkbox" name="terms" value="1" required>
-                <span>I agree to the <a href="privacy-policy.php" target="_blank" rel="noopener">Privacy Policy</a></span>
+                <span>I agree to the <a href="privacy-policy.php" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="age" value="1" required>
+                <span>I am 13 or older.</span>
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="guardian" value="1" required>
+                <span>If I am under 18, my parent, guardian or school knows I am joining Genius Hub.</span>
             </label>
 
             <button type="submit" class="btn btn-primary btn-block">Create account</button>

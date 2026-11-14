@@ -306,6 +306,18 @@ require __DIR__ . '/includes/header.php';
 
                     <div class="field">
                         <label for="body">Lesson text</label>
+                        <div class="format-bar" role="toolbar" aria-label="Formatting">
+                            <button type="button" data-wrap="**|**" title="Bold"><b>B</b></button>
+                            <button type="button" data-wrap="*|*" title="Italic"><i>I</i></button>
+                            <button type="button" data-wrap="++|++" title="Underline"><u>U</u></button>
+                            <button type="button" data-wrap="==|==" title="Highlight">Highlight</button>
+                            <button type="button" data-wrap="^{|}" title="Superscript">x<sup>2</sup></button>
+                            <button type="button" data-wrap="_{|}" title="Subscript">x<sub>2</sub></button>
+                            <button type="button" data-line="## " title="Heading">H2</button>
+                            <button type="button" data-line="### " title="Sub-heading">H3</button>
+                            <button type="button" data-line="- " title="Bullet list">List</button>
+                            <button type="button" data-line="1. " title="Numbered list">1.</button>
+                        </div>
                         <textarea id="body" name="body" rows="18" required><?= e($lesson['body']) ?></textarea>
                         <small class="hint">
                             Start a heading with <code>## </code>. Start bullet lines with <code>- </code>.
@@ -321,6 +333,9 @@ require __DIR__ . '/includes/header.php';
 
                 <div class="panel stack">
                     <h2>Quiz questions</h2>
+                    <?php if ($id > 0): ?>
+                        <p><a class="btn btn-secondary btn-sm" href="admin-quiz-import.php?lesson=<?= $id ?>">Bulk import questions</a></p>
+                    <?php endif; ?>
                     <p class="muted">This is the question bank. Students get <?= QUIZ_SIZE ?> random questions from it on each attempt, so add at least <?= QUIZ_SIZE ?>. Use Add another question for more (up to 60). Leave a question empty to skip it, or clear its text to remove an existing one.</p>
 
                     <?php for ($i = 0; $i < $slots; $i++): ?>
